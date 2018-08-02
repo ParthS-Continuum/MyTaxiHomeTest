@@ -1,44 +1,37 @@
+machine:
+   environment:
+     ANDROID_HOME: /usr/local/android-sdk-linux
 
-# Java Gradle CircleCI 2.0 configuration file
-#
-# Check https://circleci.com/docs/2.0/language-java/ for more details
-#
-version: 2
-jobs:
-  build:
-    docker:
-      # specify the version you desire here
-      - image: circleci/openjdk:8-jdk
+dependencies:
+  pre:
+    - touch app/google-services.json
+    - echo $GOOGLE_SERVICES_JSON > app/google-services.json
+    - echo y | android update sdk --no-ui --all --filter "tools,platform-tools,android-23"
+    - echo y | android update sdk --no-ui --all --filter "build-tools-23.0.2"
 
-      # Specify service dependencies here if necessary
-      # CircleCI maintains a library of pre-built images
-      # documented at https://circleci.com/docs/2.0/circleci-images/
-      # - image: circleci/postgres:9.4
+test:
+  pre:
+    - android list targets
+    - android create avd -n emulatorwithgoogleapi22 -t 12 --tag google_apis
+    - echo 'vm.heapSize=512' >> ~/.android/avd/emulatorwithgoogleapi22.ini
+    - echo 'hw.ramSize=1024' >> ~/.android/avd/emulatorwithgoogleapi22.ini
+    - cat ~/.android/avd/emulatorwithgoogleapi22.ini
+    - emulator -avd emulatorwithgoogleapi22 -no-audio -no-window :
+        background: true
+        parallel: true
+    - circle-android wait-for-boot
+    - adb shell input keyevent 82
+    - adb shell svc power stayon true
+    - adb shell settings put global window_animation_scale 0
+    - adb shell settings put global transition_animation_scale 0
+    - adb shell settings put global animator_duration_scale 0
 
-    working_directory: ~/repo
+  override:
+    - ./gradlew createMockDebugCoverageReport
+    - ./gradlew test
 
-    environment:
-      # Customize the JVM maximum heap limit
-      JVM_OPTS: -Xmx3200m
-      TERM: dumb
-
-    steps:
-      - checkout
-
-      # Download and cache dependencies
-      - restore_cache:
-          keys:
-          - v1-dependencies-{{ checksum "build.gradle" }}
-          # fallback to using the latest cache if no exact match is found
-          - v1-dependencies-
-
-      - run: gradle dependencies
-
-      - save_cache:
-          paths:
-            - ~/.gradle
-          key: v1-dependencies-{{ checksum "build.gradle" }}
-
-      # run tests!
-      - run: gradle test
-
+  post:
+    - cp -r app/build/outputs $CIRCLE_ARTIFACTS
+    - cp -r app/build/outputs/androidTest-results/ $CIRCLE_TEST_REPORTS
+    - cp -r app/build/reports/coverage/ $CIRCLE_TEST_REPORTS
+    - cp -r app/build/test-results/mockDebug/ $CIRCLE_TEST_REPORTS
